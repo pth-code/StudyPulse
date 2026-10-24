@@ -62,10 +62,23 @@ void loop() {
   if (command != lastCommand) {
       lastCommand = command;
 
-      Serial.print("Received command: ");
-      Serial.println(command.c_str());
-  }
-
+      if (command == "START") {
+            Serial.println("Study session started!");
+        }
+        else if (command == "PAUSE") {
+            Serial.println("Study session paused.");
+        }
+        else if (command == "STOP") {
+            Serial.println("Study session stopped.");
+        }
+        else if (command == "VIBRATE") {
+            Serial.println("Vibration test requested.");
+        }
+        else if (command != "Ready") {
+            Serial.print("Unknown command: ");
+            Serial.println(command.c_str());
+        }
+    }
   delay(100);
 }
 
