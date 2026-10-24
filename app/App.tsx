@@ -1,11 +1,19 @@
 
 import React, { useEffect, useRef, useState } from 'react';
+
 import {
   View,
   Text,
   Pressable,
   StyleSheet,
 } from 'react-native';
+
+import {
+  connectWebBluetooth,
+  sendWebCommand,
+  disconnectWebBluetooth,
+} from './services/webBluetooth';
+
 
 type Mode = 'study' | 'break';
 
