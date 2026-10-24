@@ -1,4 +1,13 @@
 #include <Arduino.h>
+#include <NimBLEDevice.h>
+
+#define SERVICE_UUID \
+    "12345678-1234-1234-1234-123456789000"
+
+#define CHARACTERISTIC_UUID \
+    "12345678-1234-1234-1234-123456789001"
+
+NimBLECharacteristic* commandCharacteristic;
 
 // put function declarations here:
 int myFunction(int, int);
@@ -6,15 +15,58 @@ int myFunction(int, int);
 void setup() {
   // put your setup code here, to run once:
   //int result = myFunction(2, 3);
+  // Serial.begin(115200);
+  // delay(1000);
+  // Serial.println("ESP32 connected!");
+
   Serial.begin(115200);
   delay(1000);
-  Serial.println("ESP32 connected!");
+
+  NimBLEDevice::init("StudyBand");
+
+  NimBLEServer* server = NimBLEDevice::createServer();
+
+  NimBLEService* service =
+      server->createService(SERVICE_UUID);
+
+  commandCharacteristic = service->createCharacteristic(
+      CHARACTERISTIC_UUID,
+      NIMBLE_PROPERTY::READ |
+      NIMBLE_PROPERTY::WRITE
+  );
+
+  commandCharacteristic->setValue("Ready");
+
+  service->start();
+
+  NimBLEAdvertising* advertising =
+    NimBLEDevice::getAdvertising();
+
+  advertising->setName("StudyBand");
+  advertising->start();
+
+  Serial.println("StudyBand is advertising!");
+  Serial.println("Waiting for Bluetooth commands...");
+
 }
 
 void loop() {
   // put your main code here, to run repeatedly:
-  delay(1000);
-  Serial.println("Working!");
+  // delay(1000);
+  // Serial.println("Working!");
+
+  static std::string lastCommand = "Ready";
+
+  std::string command = commandCharacteristic->getValue();
+
+  if (command != lastCommand) {
+      lastCommand = command;
+
+      Serial.print("Received command: ");
+      Serial.println(command.c_str());
+  }
+
+  delay(100);
 }
 
 // put function definitions here:
