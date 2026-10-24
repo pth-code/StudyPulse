@@ -22,11 +22,14 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "plugins": [
+    
+  "plugins": [
+    [
       "react-native-ble-plx",
       {
         "bluetoothAlwaysPermission": "Allow StudyPulse to connect to your study bracelet."
       }
     ]
+  ]
   }
 }
