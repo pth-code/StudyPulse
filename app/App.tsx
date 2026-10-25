@@ -24,7 +24,38 @@ export default function App() {
   const [secondsLeft, setSecondsLeft] = useState(25 * 60);
   const [isRunning, setIsRunning] = useState(false);
 
+  const [bluetoothStatus, setBluetoothStatus] = useState<
+  'Disconnected' | 'Connecting' | 'Connected'
+  >('Disconnected');
+
+  const [bluetoothMessage, setBluetoothMessage] = useState('');
+
   const deadline = useRef<number | null>(null);
+
+  async function connectBracelet() {
+    try {
+      setBluetoothStatus('Connecting');
+
+      const deviceName = await connectWebBluetooth();
+
+      setBluetoothStatus('Connected');
+      setBluetoothMessage(`Connected to ${deviceName}!`);
+    } catch (error) {
+      setBluetoothStatus('Disconnected');
+
+      if (error instanceof Error) {
+        setBluetoothMessage(error.message);
+      } else {
+        setBluetoothMessage('Failed to connect to StudyBand.');
+      }
+    ``}
+  }
+
+  function disconnectBracelet() {
+    disconnectWebBluetooth();
+    setBluetoothStatus('Disconnected');
+    setBluetoothMessage('Bracelet disconnected.');
+  }
 
   useEffect(() => {
     if (!isRunning) return;
@@ -61,7 +92,7 @@ export default function App() {
     }
   }, [secondsLeft, isRunning, mode, studyMinutes, breakMinutes]);
 
-  function toggleTimer() {
+  async function toggleTimer() {
     if (isRunning) {
       if (deadline.current !== null) {
         setSecondsLeft(Math.max(
@@ -71,18 +102,33 @@ export default function App() {
       }
       deadline.current = null;
       setIsRunning(false);
+      try {
+        await sendWebCommand("PAUSE");
+      } catch (error) {
+        setBluetoothMessage("Bracelet not connected. Timer paused anyway.");
+      }
     } else {
       deadline.current = Date.now() + secondsLeft * 1000;
       setIsRunning(true);
+      try {
+        await sendWebCommand("START");
+      } catch (error) {
+        setBluetoothMessage("Bracelet not connected. Timer started anyway.");
+      }
     }
   }
 
-  function resetTimer() {
+  async function resetTimer() {
     setIsRunning(false);
     deadline.current = null;
     setSecondsLeft(
       (mode === 'study' ? studyMinutes : breakMinutes) * 60
     );
+    try {
+      await sendWebCommand("STOP");
+    } catch (error) {
+      setBluetoothMessage("Bracelet not connected. Timer reset anyway.");
+    }
   }
 
   function adjustDuration(target: Mode, change: number) {
@@ -136,6 +182,27 @@ export default function App() {
         </Pressable>
       </View>
 
+      <Text style={styles.mode}>
+        {bluetoothStatus}
+      </Text>
+
+      <Text style={styles.subtitle}>
+        {bluetoothMessage}
+      </Text>
+      
+      <Pressable style={styles.button} onPress={connectBracelet}>
+        <Text style={styles.buttonText}>Connect Bracelet</Text>
+      </Pressable>
+
+      {bluetoothStatus === 'Connected' && (
+        <Pressable
+          style={styles.button}
+          onPress={disconnectBracelet}
+        >
+          <Text style={styles.buttonText}>Disconnect Bracelet</Text>
+        </Pressable>
+      )}
+
       <Text style={styles.heading}>Study Duration</Text>
       <View style={styles.row}>
         <Pressable
@@ -180,10 +247,11 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F6FF',
+    backgroundColor: '#d8d2fb',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
+    paddingVertical: 40,
   },
   title: {
     fontSize: 34,
@@ -194,15 +262,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#777',
     marginTop: 8,
-    marginBottom: 42,
+    marginBottom: 20,
   },
   mode: {
-    fontSize: 20,
-    color: '#555',
-    marginBottom: 10,
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#45418E',
+    marginBottom: 14,
   },
   timer: {
-    fontSize: 68,
+    fontSize: 76,
     fontWeight: 'bold',
     color: '#45418E',
     marginBottom: 32,
@@ -216,17 +285,18 @@ const styles = StyleSheet.create({
   },
   button: {
     backgroundColor: '#6C63FF',
-    paddingVertical: 14,
-    paddingHorizontal: 30,
-    borderRadius: 12,
+    paddingVertical: 15,
+    paddingHorizontal: 32,
+    borderRadius: 16,
+    alignItems: 'center',
   },
   smallButton: {
-    backgroundColor: '#8983D9',
-    width: 42,
-    height: 42,
+    backgroundColor: '#b6b1d5',
+    width: 44,
+    height: 44,
     justifyContent: 'center',
     alignItems: 'center',
-    borderRadius: 10,
+    borderRadius: 14,
   },
   buttonText: {
     color: 'white',
