@@ -24,7 +24,38 @@ export default function App() {
   const [secondsLeft, setSecondsLeft] = useState(25 * 60);
   const [isRunning, setIsRunning] = useState(false);
 
+  const [bluetoothStatus, setBluetoothStatus] = useState<
+  'Disconnected' | 'Connecting' | 'Connected'
+  >('Disconnected');
+
+  const [bluetoothMessage, setBluetoothMessage] = useState('');
+
   const deadline = useRef<number | null>(null);
+
+  async function connectBracelet() {
+    try {
+      setBluetoothStatus('Connecting');
+
+      const deviceName = await connectWebBluetooth();
+
+      setBluetoothStatus('Connected');
+      setBluetoothMessage(`Connected to ${deviceName}!`);
+    } catch (error) {
+      setBluetoothStatus('Disconnected');
+
+      if (error instanceof Error) {
+        setBluetoothMessage(error.message);
+      } else {
+        setBluetoothMessage('Failed to connect to StudyBand.');
+      }
+    ``}
+  }
+
+  function disconnectBracelet() {
+    disconnectWebBluetooth();
+    setBluetoothStatus('Disconnected');
+    setBluetoothMessage('Bracelet disconnected.');
+  }
 
   useEffect(() => {
     if (!isRunning) return;
@@ -61,7 +92,7 @@ export default function App() {
     }
   }, [secondsLeft, isRunning, mode, studyMinutes, breakMinutes]);
 
-  function toggleTimer() {
+  async function toggleTimer() {
     if (isRunning) {
       if (deadline.current !== null) {
         setSecondsLeft(Math.max(
@@ -71,18 +102,33 @@ export default function App() {
       }
       deadline.current = null;
       setIsRunning(false);
+      try {
+        await sendWebCommand("PAUSE");
+      } catch (error) {
+        setBluetoothMessage("Bracelet not connected. Timer paused anyway.");
+      }
     } else {
       deadline.current = Date.now() + secondsLeft * 1000;
       setIsRunning(true);
+      try {
+        await sendWebCommand("START");
+      } catch (error) {
+        setBluetoothMessage("Bracelet not connected. Timer started anyway.");
+      }
     }
   }
 
-  function resetTimer() {
+  async function resetTimer() {
     setIsRunning(false);
     deadline.current = null;
     setSecondsLeft(
       (mode === 'study' ? studyMinutes : breakMinutes) * 60
     );
+    try {
+      await sendWebCommand("STOP");
+    } catch (error) {
+      setBluetoothMessage("Bracelet not connected. Timer reset anyway.");
+    }
   }
 
   function adjustDuration(target: Mode, change: number) {
@@ -135,6 +181,27 @@ export default function App() {
           <Text style={styles.buttonText}>Reset</Text>
         </Pressable>
       </View>
+
+      <Text style={styles.mode}>
+        {bluetoothStatus}
+      </Text>
+
+      <Text style={styles.subtitle}>
+        {bluetoothMessage}
+      </Text>
+      
+      <Pressable style={styles.button} onPress={connectBracelet}>
+        <Text style={styles.buttonText}>Connect Bracelet</Text>
+      </Pressable>
+
+      {bluetoothStatus === 'Connected' && (
+        <Pressable
+          style={styles.button}
+          onPress={disconnectBracelet}
+        >
+          <Text style={styles.buttonText}>Disconnect Bracelet</Text>
+        </Pressable>
+      )}
 
       <Text style={styles.heading}>Study Duration</Text>
       <View style={styles.row}>
