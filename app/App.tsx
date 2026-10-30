@@ -1,335 +1,104 @@
-
-import React, { useEffect, useRef, useState } from 'react';
-
-import {
-  View,
-  Text,
-  Pressable,
-  StyleSheet,
-} from 'react-native';
-
-import {
-  connectWebBluetooth,
-  sendWebCommand,
-  disconnectWebBluetooth,
-} from './services/webBluetooth';
-
-
-type Mode = 'study' | 'break';
+import React from 'react';
+import { StyleSheet, Text, View, TouchableOpacity, useWindowDimensions, SafeAreaView, StatusBar } from 'react-native';
+import { useStudyTimer } from './hooks/useStudyTimer';
 
 export default function App() {
-  const [studyMinutes, setStudyMinutes] = useState(25);
-  const [breakMinutes, setBreakMinutes] = useState(5);
-  const [mode, setMode] = useState<Mode>('study');
-  const [secondsLeft, setSecondsLeft] = useState(25 * 60);
-  const [isRunning, setIsRunning] = useState(false);
+  const { width } = useWindowDimensions();
+  const isMobile = width < 600;
 
-  const [bluetoothStatus, setBluetoothStatus] = useState<
-  'Disconnected' | 'Connecting' | 'Connected'
-  >('Disconnected');
+  const {
+    mode,
+    secondsLeft,
+    isRunning,
+    toggleTimer,
+    resetTimer,
+    changeMode,
+  } = useStudyTimer();
 
-  const [bluetoothMessage, setBluetoothMessage] = useState('');
+  const formatTime = (totalSeconds: number): string => {
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
 
-  const deadline = useRef<number | null>(null);
-
-  async function connectBracelet() {
-    try {
-      setBluetoothStatus('Connecting');
-
-      const deviceName = await connectWebBluetooth();
-
-      setBluetoothStatus('Connected');
-      setBluetoothMessage(`Connected to ${deviceName}!`);
-    } catch (error) {
-      setBluetoothStatus('Disconnected');
-
-      if (error instanceof Error) {
-        setBluetoothMessage(error.message);
-      } else {
-        setBluetoothMessage('Failed to connect to StudyBand.');
-      }
-    ``}
-  }
-
-  function disconnectBracelet() {
-    disconnectWebBluetooth();
-    setBluetoothStatus('Disconnected');
-    setBluetoothMessage('Bracelet disconnected.');
-  }
-
-  useEffect(() => {
-    if (!isRunning) return;
-
-    const interval = setInterval(() => {
-      if (deadline.current === null) return;
-
-      const remaining = Math.max(
-        0,
-        Math.ceil((deadline.current - Date.now()) / 1000)
-      );
-
-      setSecondsLeft(remaining);
-    }, 250);
-
-    return () => clearInterval(interval);
-  }, [isRunning]);
-
-  useEffect(() => {
-    if (secondsLeft !== 0 || !isRunning) return;
-
-    setIsRunning(false);
-    deadline.current = null;
-
-    // Later, we'll send a vibration command to the ESP32.
-    console.log('Session complete!');
-
-    if (mode === 'study') {
-      setMode('break');
-      setSecondsLeft(breakMinutes * 60);
-    } else {
-      setMode('study');
-      setSecondsLeft(studyMinutes * 60);
-    }
-  }, [secondsLeft, isRunning, mode, studyMinutes, breakMinutes]);
-
-  async function toggleTimer() {
-    if (isRunning) {
-      if (deadline.current !== null) {
-        setSecondsLeft(Math.max(
-          0,
-          Math.ceil((deadline.current - Date.now()) / 1000)
-        ));
-      }
-      deadline.current = null;
-      setIsRunning(false);
-      try {
-        await sendWebCommand("PAUSE");
-      } catch (error) {
-        setBluetoothMessage("Bracelet not connected. Timer paused anyway.");
-      }
-    } else {
-      deadline.current = Date.now() + secondsLeft * 1000;
-      setIsRunning(true);
-      try {
-        await sendWebCommand("START");
-      } catch (error) {
-        setBluetoothMessage("Bracelet not connected. Timer started anyway.");
-      }
-    }
-  }
-
-  async function resetTimer() {
-    setIsRunning(false);
-    deadline.current = null;
-    setSecondsLeft(
-      (mode === 'study' ? studyMinutes : breakMinutes) * 60
-    );
-    try {
-      await sendWebCommand("STOP");
-    } catch (error) {
-      setBluetoothMessage("Bracelet not connected. Timer reset anyway.");
-    }
-  }
-
-  function adjustDuration(target: Mode, change: number) {
-    if (isRunning) return;
-
-    if (target === 'study') {
-      const updated = Math.max(1, studyMinutes + change);
-      setStudyMinutes(updated);
-      if (mode === 'study') setSecondsLeft(updated * 60);
-    } else {
-      const updated = Math.max(1, breakMinutes + change);
-      setBreakMinutes(updated);
-      if (mode === 'break') setSecondsLeft(updated * 60);
-    }
-  }
-
-  function formatTime(total: number) {
-    const minutes = Math.floor(total / 60);
-    const seconds = total % 60;
-
-    return (
-      String(minutes).padStart(2, '0') + ':' +
-      String(seconds).padStart(2, '0')
-    );
-  }
+  const isStudy = mode === 'study';
+  const themeColor = isStudy ? '#4F46E5' : '#059669';
+  const backgroundColor = isStudy ? '#EEF2FF' : '#ECFDF5';
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>StudyPulse</Text>
-      <Text style={styles.subtitle}>
-        Study smarter. Stay balanced.
-      </Text>
+    <SafeAreaView style={[styles.container, { backgroundColor }]}>
+      <StatusBar barStyle="dark-content" />
+      <View style={[styles.card, isMobile ? styles.cardMobile : styles.cardDesktop]}>
+        
+        <Text style={styles.title}>StudyPulse</Text>
 
-      <Text style={styles.mode}>
-        {mode === 'study' ? 'Focus Time' : 'Break Time'}
-      </Text>
+        <View style={styles.tabContainer}>
+          <TouchableOpacity
+            style={[styles.tab, isStudy && { backgroundColor: '#4F46E5' }]}
+            onPress={() => changeMode('study')}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.tabText, isStudy && styles.activeTabText]}>Study Mode</Text>
+          </TouchableOpacity>
 
-      <Text style={styles.timer}>
-        {formatTime(secondsLeft)}
-      </Text>
+          <TouchableOpacity
+            style={[styles.tab, !isStudy && { backgroundColor: '#059669' }]}
+            onPress={() => changeMode('break')}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.tabText, !isStudy && styles.activeTabText]}>Break Mode</Text>
+          </TouchableOpacity>
+        </View>
 
-      <View style={styles.row}>
-        <Pressable style={styles.button} onPress={toggleTimer}>
-          <Text style={styles.buttonText}>
-            {isRunning ? 'Pause' : 'Start'}
+        <View style={[styles.timerCircle, { borderColor: themeColor }]}>
+          <Text style={[styles.timerText, { color: themeColor }]}>
+            {formatTime(secondsLeft)}
           </Text>
-        </Pressable>
+          <Text style={styles.modeLabel}>
+            {isStudy ? 'Focus Time' : 'Rest & Recharge'}
+          </Text>
+        </View>
 
-        <Pressable style={styles.button} onPress={resetTimer}>
-          <Text style={styles.buttonText}>Reset</Text>
-        </Pressable>
+        <View style={styles.buttonRow}>
+          <TouchableOpacity
+            style={[styles.button, styles.primaryButton, { backgroundColor: themeColor }]}
+            onPress={toggleTimer}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.primaryButtonText}>{isRunning ? 'Pause' : 'Start'}</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.button, styles.secondaryButton]}
+            onPress={resetTimer}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.secondaryButtonText}>Reset</Text>
+          </TouchableOpacity>
+        </View>
+
       </View>
-
-      <Text style={styles.mode}>
-        {bluetoothStatus}
-      </Text>
-
-      <Text style={styles.subtitle}>
-        {bluetoothMessage}
-      </Text>
-      
-      
-{bluetoothStatus === 'Connected' ? (
-  <Pressable
-    style={styles.button}
-    onPress={disconnectBracelet}
-  >
-    <Text style={styles.buttonText}>
-      Disconnect Bracelet
-    </Text>
-  </Pressable>
-) : (
-  <Pressable
-    style={styles.button}
-    onPress={connectBracelet}
-    disabled={bluetoothStatus === 'Connecting'}
-  >
-    <Text style={styles.buttonText}>
-      {bluetoothStatus === 'Connecting'
-        ? 'Connecting...'
-        : 'Connect Bracelet'}
-    </Text>
-  </Pressable>
-)}
-
-
-      <Text style={styles.heading}>Study Duration</Text>
-      <View style={styles.row}>
-        <Pressable
-          style={styles.smallButton}
-          onPress={() => adjustDuration('study', -1)}
-        >
-          <Text style={styles.buttonText}>−</Text>
-        </Pressable>
-        <Text style={styles.duration}>{studyMinutes} min</Text>
-        <Pressable
-          style={styles.smallButton}
-          onPress={() => adjustDuration('study', 1)}
-        >
-          <Text style={styles.buttonText}>+</Text>
-        </Pressable>
-      </View>
-
-      <Text style={styles.heading}>Break Duration</Text>
-      <View style={styles.row}>
-        <Pressable
-          style={styles.smallButton}
-          onPress={() => adjustDuration('break', -1)}
-        >
-          <Text style={styles.buttonText}>−</Text>
-        </Pressable>
-        <Text style={styles.duration}>{breakMinutes} min</Text>
-        <Pressable
-          style={styles.smallButton}
-          onPress={() => adjustDuration('break', 1)}
-        >
-          <Text style={styles.buttonText}>+</Text>
-        </Pressable>
-      </View>
-
-      <Text style={styles.note}>
-        PALLAVI ZITA SANJANA SAANVI
-      </Text>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#d8d2fb',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-    paddingVertical: 40,
-  },
-  title: {
-    fontSize: 34,
-    fontWeight: 'bold',
-    color: '#45418E',
-  },
-  subtitle: {
-    fontSize: 14,
-    color: '#777',
-    marginTop: 8,
-    marginBottom: 20,
-  },
-  mode: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#45418E',
-    marginBottom: 14,
-  },
-  timer: {
-    fontSize: 76,
-    fontWeight: 'bold',
-    color: '#45418E',
-    marginBottom: 32,
-    fontVariant: ['tabular-nums'],
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-    marginBottom: 20,
-  },
-  button: {
-    backgroundColor: '#6C63FF',
-    paddingVertical: 15,
-    paddingHorizontal: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-  },
-  smallButton: {
-    backgroundColor: '#b6b1d5',
-    width: 44,
-    height: 44,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 14,
-  },
-  buttonText: {
-    color: 'white',
-    fontSize: 17,
-    fontWeight: 'bold',
-  },
-  heading: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: '#45418E',
-    marginTop: 14,
-    marginBottom: 14,
-  },
-  duration: {
-    fontSize: 18,
-    minWidth: 65,
-    textAlign: 'center',
-  },
-  note: {
-    marginTop: 25,
-    fontSize: 13,
-    color: '#888',
-  },
+  container: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 16 },
+  card: { backgroundColor: '#FFFFFF', borderRadius: 24, padding: 32, alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.08, shadowRadius: 24, elevation: 4, width: '100%' },
+  cardDesktop: { maxWidth: 480 },
+  cardMobile: { maxWidth: '100%', padding: 24 },
+  title: { fontSize: 28, fontWeight: '800', color: '#1F2937', marginBottom: 24 },
+  tabContainer: { flexDirection: 'row', backgroundColor: '#F3F4F6', borderRadius: 12, padding: 4, marginBottom: 32, width: '100%' },
+  tab: { flex: 1, paddingVertical: 10, borderRadius: 8, alignItems: 'center' },
+  tabText: { fontSize: 14, fontWeight: '600', color: '#6B7280' },
+  activeTabText: { color: '#FFFFFF' },
+  timerCircle: { width: 220, height: 220, borderRadius: 110, borderWidth: 6, justifyContent: 'center', alignItems: 'center', marginBottom: 36 },
+  timerText: { fontSize: 52, fontWeight: '700' },
+  modeLabel: { fontSize: 13, fontWeight: '500', color: '#9CA3AF', textTransform: 'uppercase', marginTop: 4 },
+  buttonRow: { flexDirection: 'row', gap: 12, width: '100%' },
+  button: { flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  primaryButton: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
+  primaryButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
+  secondaryButton: { backgroundColor: '#F3F4F6' },
+  secondaryButtonText: { color: '#4B5563', fontSize: 16, fontWeight: '600' },
 });
