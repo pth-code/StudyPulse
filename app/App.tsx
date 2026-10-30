@@ -190,18 +190,30 @@ export default function App() {
         {bluetoothMessage}
       </Text>
       
-      <Pressable style={styles.button} onPress={connectBracelet}>
-        <Text style={styles.buttonText}>Connect Bracelet</Text>
-      </Pressable>
+      
+{bluetoothStatus === 'Connected' ? (
+  <Pressable
+    style={styles.button}
+    onPress={disconnectBracelet}
+  >
+    <Text style={styles.buttonText}>
+      Disconnect Bracelet
+    </Text>
+  </Pressable>
+) : (
+  <Pressable
+    style={styles.button}
+    onPress={connectBracelet}
+    disabled={bluetoothStatus === 'Connecting'}
+  >
+    <Text style={styles.buttonText}>
+      {bluetoothStatus === 'Connecting'
+        ? 'Connecting...'
+        : 'Connect Bracelet'}
+    </Text>
+  </Pressable>
+)}
 
-      {bluetoothStatus === 'Connected' && (
-        <Pressable
-          style={styles.button}
-          onPress={disconnectBracelet}
-        >
-          <Text style={styles.buttonText}>Disconnect Bracelet</Text>
-        </Pressable>
-      )}
 
       <Text style={styles.heading}>Study Duration</Text>
       <View style={styles.row}>
