@@ -48,7 +48,7 @@ export default function App() {
       } else {
         setBluetoothMessage('Failed to connect to StudyBand.');
       }
-    ``}
+    }
   }
 
   function disconnectBracelet() {
@@ -74,23 +74,39 @@ export default function App() {
     return () => clearInterval(interval);
   }, [isRunning]);
 
-  useEffect(() => {
-    if (secondsLeft !== 0 || !isRunning) return;
 
-    setIsRunning(false);
-    deadline.current = null;
+useEffect(() => {
+  if (secondsLeft !== 0 || !isRunning) return;
 
-    // Later, we'll send a vibration command to the ESP32.
-    console.log('Session complete!');
+  // Stop the completed session.
+  setIsRunning(false);
+  deadline.current = null;
 
-    if (mode === 'study') {
-      setMode('break');
-      setSecondsLeft(breakMinutes * 60);
-    } else {
-      setMode('study');
-      setSecondsLeft(studyMinutes * 60);
-    }
-  }, [secondsLeft, isRunning, mode, studyMinutes, breakMinutes]);
+  console.log(`${mode} session complete!`);
+
+  // Tell the Arduino to vibrate.
+  sendWebCommand('VIBRATE')
+    .then(() => {
+      console.log('VIBRATE command sent!');
+      setBluetoothMessage('Session complete! Vibration sent.');
+    })
+    .catch((error) => {
+      console.log('Vibration unavailable:', error);
+      setBluetoothMessage(
+        'Session complete! Bracelet not connected.'
+      );
+    });
+
+  // Switch to the next mode.
+  if (mode === 'study') {
+    setMode('break');
+    setSecondsLeft(breakMinutes * 60);
+  } else {
+    setMode('study');
+    setSecondsLeft(studyMinutes * 60);
+  }
+}, [secondsLeft, isRunning, mode, studyMinutes, breakMinutes]);
+
 
   async function toggleTimer() {
     if (isRunning) {
