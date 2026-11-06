@@ -7,8 +7,8 @@ import {
 } from 'react-native';
 
 type BottomNavigationProps = {
-  activeScreen: 'timer' | 'schedule';
-  onNavigate: (screen: 'timer' | 'schedule') => void;
+  activeScreen: 'timer' | 'schedule' | 'analytics';
+  onNavigate: (screen: 'timer' | 'schedule' | 'analytics') => void;
 };
 
 export default function BottomNavigation({
@@ -44,6 +44,20 @@ export default function BottomNavigation({
           📅 Schedule
         </Text>
       </Pressable>
+
+      <Pressable
+        style={styles.tab}
+        onPress={() => onNavigate('analytics')}
+      >
+        <Text
+          style={[
+            styles.tabText,
+            activeScreen === 'analytics' && styles.activeTab,
+          ]}
+        >
+          📊 Analytics
+        </Text>
+</Pressable>
     </View>
   );
 }

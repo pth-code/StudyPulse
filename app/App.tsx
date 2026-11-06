@@ -4,9 +4,11 @@ import { View, StyleSheet } from 'react-native';
 
 import TimerScreen from './screens/TimerScreen';
 import ScheduleScreen from './screens/ScheduleScreen';
+import AnalyticsScreen from './screens/AnalyticsScreen';
 import BottomNavigation from './components/BottomNavigation';
 
-type Screen = 'timer' | 'schedule';
+
+type Screen = 'timer' | 'schedule' | 'analytics';
 
 export default function App() {
   const [activeScreen, setActiveScreen] = useState<Screen>('timer');
@@ -16,8 +18,10 @@ export default function App() {
       <View style={styles.screen}>
         {activeScreen === 'timer' ? (
           <TimerScreen />
-        ) : (
+        ) : activeScreen === 'schedule' ? (
           <ScheduleScreen />
+        ) : (
+          <AnalyticsScreen />
         )}
       </View>
 
