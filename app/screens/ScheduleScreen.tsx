@@ -8,6 +8,15 @@ import {
   ScrollView,
 } from 'react-native';
 
+interface Session{
+  id: number;
+  day: number;
+  time: string;
+  title: string;
+  decription: string;
+  completed: boolean;
+}
+
 export default function ScheduleScreen() {
   const [selectedDay, setSelectedDay] = useState(4);
   const [showAddOptions, setShowAddOptions] = useState(false);
@@ -38,6 +47,14 @@ export default function ScheduleScreen() {
     description: 'Homework · 60 minutes',
   },
   ]);
+
+  const toggleSessionCompletion = (id: number) => {
+    setSessions((prev) =>
+      prev.map((session) =>
+        session.id === id ? { ...session, completed: !session.completed } : session
+  )
+  );
+  };
 
   const addActivity = (type: string) => {
   const duration =
