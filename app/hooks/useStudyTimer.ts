@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { sendWebCommand } from '../services/webBluetooth';
 
 export type Mode = 'study' | 'break';
@@ -35,7 +35,7 @@ export function useStudyTimer() {
     return () => clearInterval(interval);
   }, [isRunning]);
 
-  // Session completion effect
+  // Session completion effect (Triggers vibration!)
   useEffect(() => {
     if (secondsLeft !== 0 || !isRunning) return;
 
@@ -43,6 +43,11 @@ export function useStudyTimer() {
     deadline.current = null;
 
     console.log('Session complete!');
+
+    // Send vibration command to ESP32 bracelet
+    sendWebCommand('VIBRATE').catch(() => {
+      console.log('Bracelet not connected for vibration alert.');
+    });
 
     if (mode === 'study') {
       setMode('break');
