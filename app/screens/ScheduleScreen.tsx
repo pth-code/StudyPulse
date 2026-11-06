@@ -20,7 +20,54 @@ export default function ScheduleScreen() {
     { name: 'Fri', date: 6 },
     { name: 'Sat', date: 7 },
     { name: 'Sun', date: 8 },
-  ];
+  ]
+
+  const [sessions, setSessions] = useState([
+  {
+    id: 1,
+    day: 4,
+    time: '9:00 AM',
+    title: 'INFO 340',
+    description: 'CSS Review · 45 minutes',
+  },
+  {
+    id: 2,
+    day: 4,
+    time: '10:00 AM',
+    title: 'INFO 370',
+    description: 'Homework · 60 minutes',
+  },
+  ]);
+
+  const addActivity = (type: string) => {
+  const duration =
+    type === 'Short Break' ? 10 :
+    type === 'Long Break' ? 30 : 45;
+
+  // Find how many sessions are already scheduled for this day
+  const daySessions = sessions.filter(
+    (session) => session.day === selectedDay
+  );
+
+  // Assign the new activity a time
+  const hour = 9 + daySessions.length;
+  const displayHour = hour > 12 ? hour - 12 : hour;
+  const period = hour >= 12 ? 'PM' : 'AM';
+
+  const newActivity = {
+    id: Date.now(),
+    day: selectedDay,
+    time: `${displayHour}:00 ${period}`,
+    title: type,
+    description: `${duration} minutes`,
+  };
+
+  // Add the new activity to the list
+  setSessions([...sessions, newActivity]);
+
+  // Close the options menu
+  setShowAddOptions(false);
+};
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -57,46 +104,41 @@ export default function ScheduleScreen() {
 
       <Text style={styles.heading}>Upcoming Sessions</Text>
 
-      <View style={styles.session}>
-        <Text style={styles.sessionTime}>9:00 AM</Text>
-        <View style={styles.sessionDetails}>
-          <Text style={styles.sessionTitle}>INFO 340</Text>
-          <Text style={styles.sessionDescription}>
-            CSS Review · 45 minutes
-          </Text>
-        </View>
-      </View>
+      {sessions
+  .filter((session) => session.day === selectedDay)
+  .map((session) => (
+    <View style={styles.session} key={session.id}>
+      <Text style={styles.sessionTime}>{session.time}</Text>
 
-      <View style={styles.session}>
-        <Text style={styles.sessionTime}>10:00 AM</Text>
-        <View style={styles.sessionDetails}>
-          <Text style={styles.sessionTitle}>INFO 370</Text>
-          <Text style={styles.sessionDescription}>
-            Homework · 60 minutes
-          </Text>
-        </View>
+      <View style={styles.sessionDetails}>
+        <Text style={styles.sessionTitle}>{session.title}</Text>
+        <Text style={styles.sessionDescription}>
+          {session.description}
+        </Text>
       </View>
+    </View>
+  ))}
 
     <Pressable
-        style={styles.addButton}
-        onPress={() => setShowAddOptions(!showAddOptions)}
-        >
-    <Text style={styles.addButtonText}>
-        + Add Activity
-    </Text>
-    </Pressable>
+  style={styles.addButton}
+  onPress={() => setShowAddOptions(!showAddOptions)}
+>
+  <Text style={styles.addButtonText}>
+    + Add Activity
+  </Text>
+</Pressable>
 
 {showAddOptions && (
   <View style={styles.addOptions}>
-    <Pressable onPress={() => setShowAddOptions(false)}>
+    <Pressable onPress={() => addActivity('Study Session')}>
       <Text>📚 Study Session</Text>
     </Pressable>
 
-    <Pressable onPress={() => setShowAddOptions(false)}>
+    <Pressable onPress={() => addActivity('Short Break')}>
       <Text>☕ Short Break</Text>
     </Pressable>
 
-    <Pressable onPress={() => setShowAddOptions(false)}>
+    <Pressable onPress={() => addActivity('Long Break')}>
       <Text>🌿 Long Break</Text>
     </Pressable>
   </View>
