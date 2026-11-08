@@ -11,44 +11,62 @@ import {
   Platform,
 } from 'react-native';
 
-import type {
-  Activity,
-  TimerPlan,
-} from '../types/schedule';
-
-import {
-  generatePlan,
-  timeToMinutes,
-} from '../utils/generatePlan';
-
-type SessionStatus =
-  'ready' | 'running' | 'paused' | 'completed';
-
-type Props = {
-  onStartSession: (plan: TimerPlan) => void;
-  activePlanId: string | null;
-  sessionStatus: SessionStatus;
-};
-
-const STORAGE_KEY = 'studypulse-activities-v1';
-
-// Convert a date into YYYY-MM-DD.
-function dateKey(date: Date): string {
-  return [
-    date.getFullYear(),
-    String(date.getMonth() + 1).padStart(2, '0'),
-    String(date.getDate()).padStart(2, '0'),
-  ].join('-');
+interface Session{
+  id: number;
+  day: number;
+  time: string;
+  title: string;
+  decription: string;
+  completed: boolean;
 }
 
-// Find Monday of the selected week.
-function weekStartOf(date: Date): Date {
-  const result = new Date(date);
+export default function ScheduleScreen() {
+  const [selectedDay, setSelectedDay] = useState(4);
+  const [showAddOptions, setShowAddOptions] = useState(false);
 
-  result.setHours(12, 0, 0, 0);
+  const days = [
+    { name: 'Mon', date: 2 },
+    { name: 'Tue', date: 3 },
+    { name: 'Wed', date: 4 },
+    { name: 'Thu', date: 5 },
+    { name: 'Fri', date: 6 },
+    { name: 'Sat', date: 7 },
+    { name: 'Sun', date: 8 },
+  ]
 
-  result.setDate(
-    result.getDate() - (result.getDay() + 6) % 7
+  const [sessions, setSessions] = useState([
+  {
+    id: 1,
+    day: 4,
+    time: '9:00 AM',
+    title: 'INFO 340',
+    description: 'CSS Review · 45 minutes',
+  },
+  {
+    id: 2,
+    day: 4,
+    time: '10:00 AM',
+    title: 'INFO 370',
+    description: 'Homework · 60 minutes',
+  },
+  ]);
+
+  const toggleSessionCompletion = (id: number) => {
+    setSessions((prev) =>
+      prev.map((session) =>
+        session.id === id ? { ...session, completed: !session.completed } : session
+  )
+  );
+  };
+
+  const addActivity = (type: string) => {
+  const duration =
+    type === 'Short Break' ? 10 :
+    type === 'Long Break' ? 30 : 45;
+
+  // Find how many sessions are already scheduled for this day
+  const daySessions = sessions.filter(
+    (session) => session.day === selectedDay
   );
 
   return result;
