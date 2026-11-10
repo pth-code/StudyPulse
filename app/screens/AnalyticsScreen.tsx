@@ -25,6 +25,36 @@ export default function AnalyticsScreen({ sessions }: Props) {
     0
   );
 
+  const weeklyStudyData = Array.from({ length: 7 }, (_, index) => {
+    const today = new Date();
+    const dayOfWeek = today.getDay();
+    const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+
+    const monday = new Date(today);
+    monday.setDate(today.getDate() + mondayOffset);
+    monday.setHours(0, 0, 0, 0);
+
+    const date = new Date(monday);
+    date.setDate(monday.getDate() + index);
+
+    const minutes = studySessions
+      .filter(session => {
+        const sessionDate = new Date(session.completedAt);
+        return sessionDate.toDateString() === date.toDateString();
+      })
+      .reduce((total, session) => total + session.durationMinutes, 0);
+
+    return {
+      day: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][index],
+      minutes,
+    };
+  });
+
+  const maxStudyMinutes = Math.max(
+    ...weeklyStudyData.map(day => day.minutes),
+    60
+  );
+
   const totalBreaks = breakSessions.length;
 
   const completedSessions = studySessions.length;
@@ -87,6 +117,35 @@ export default function AnalyticsScreen({ sessions }: Props) {
             <Text style={styles.statLabel}>Study Streak</Text>
         </View>
      </View>
+    <View style={styles.chartCard}>
+    <Text style={styles.chartTitle}>Weekly Study Activity</Text>
+    <Text style={styles.chartSubtitle}>
+      Your study time each day this week
+    </Text>
+
+    <View style={styles.chart}>
+      {weeklyStudyData.map((item, index) => (
+        <View key={item.day} style={styles.barColumn}>
+          <Text style={styles.barLabel}>
+            {Math.round(item.minutes)}m
+          </Text>
+
+          <View style={styles.barBackground}>
+            <View
+              style={[
+                styles.bar,
+                {
+                  height: `${(item.minutes / maxStudyMinutes) * 100}%`,
+                },
+              ]}
+            />
+          </View>
+
+          <Text style={styles.dayLabel}>{item.day}</Text>
+        </View>
+      ))}
+    </View>
+  </View>
     </ScrollView>
   );
 }
@@ -130,5 +189,65 @@ statLabel: {
   fontSize: 13,
   color: '#777777',
   marginTop: 6,
+},
+
+chartCard: {
+  backgroundColor: '#FFFFFF',
+  borderRadius: 16,
+  padding: 20,
+  marginTop: 24,
+},
+
+chartTitle: {
+  fontSize: 18,
+  fontWeight: 'bold',
+  color: '#45418E',
+},
+
+chartSubtitle: {
+  fontSize: 13,
+  color: '#888888',
+  marginTop: 4,
+},
+
+chart: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'flex-end',
+  height: 180,
+  marginTop: 24,
+},
+
+barColumn: {
+  flex: 1,
+  alignItems: 'center',
+  height: '100%',
+},
+
+barLabel: {
+  fontSize: 10,
+  color: '#777777',
+  marginBottom: 6,
+},
+
+barBackground: {
+  flex: 1,
+  width: 22,
+  backgroundColor: '#F0EDFA',
+  borderRadius: 8,
+  justifyContent: 'flex-end',
+  overflow: 'hidden',
+},
+
+bar: {
+  width: '100%',
+  backgroundColor: '#8B75D7',
+  borderRadius: 8,
+},
+
+dayLabel: {
+  fontSize: 11,
+  color: '#777777',
+  marginTop: 8,
 },
 });
