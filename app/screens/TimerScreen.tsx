@@ -27,6 +27,10 @@ type Props = {
   sessionStatus: SessionStatus;
   onStatusChange: (status: SessionStatus) => void;
   onExitSchedule: () => void;
+  onSessionComplete: (
+    type: 'study' | 'break',
+    durationSeconds: number
+  ) => void;
 };
 
 export default function TimerScreen({
@@ -34,6 +38,7 @@ export default function TimerScreen({
   sessionStatus,
   onStatusChange,
   onExitSchedule,
+  onSessionComplete,
 }: Props) {
 
   // Manual timer settings.
@@ -107,6 +112,7 @@ export default function TimerScreen({
   }
 
   // Update the countdown four times per second.
+  // Update the countdown four times per second.
   useEffect(() => {
     if (!isRunning) return;
 
@@ -118,7 +124,7 @@ export default function TimerScreen({
         Math.ceil(
           (deadline.current - Date.now()) / 1000
         )
-      );
+    ) ;
 
       setSecondsLeft(remaining);
     }, 250);
@@ -130,6 +136,22 @@ export default function TimerScreen({
   useEffect(() => {
     if (!isRunning || secondsLeft !== 0) return;
 
+    // Record the completed interval.
+    if (activePlan) {
+      const completedBlock = activePlan.blocks[blockIndex];
+
+      if (completedBlock) {
+        onSessionComplete(
+          completedBlock.type === 'study' ? 'study' : 'break',
+          completedBlock.durationSeconds
+        );
+      }
+    } else {
+      onSessionComplete(
+        mode,
+        (mode === 'study' ? studyMinutes : breakMinutes) * 60
+      );
+    }
     // Alert the bracelet at every block transition.
     sendWebCommand('VIBRATE')
       .then(() => {
@@ -185,6 +207,7 @@ export default function TimerScreen({
     studyMinutes,
     breakMinutes,
     onStatusChange,
+    onSessionComplete,
   ]);
 
   // Start, pause, or resume the timer.

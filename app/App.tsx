@@ -1,11 +1,14 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 
 import TimerScreen from './screens/TimerScreen';
 import ScheduleScreen from './screens/ScheduleScreen';
+import AnalyticsScreen from './screens/AnalyticsScreen';
 import BottomNavigation from './components/BottomNavigation';
 import type { TimerPlan } from './types/schedule';
+import { getSessions, saveSession } from './services/analyticsService';
+import type { StudySession } from './types/analytics';
 
 export type SessionStatus =
   'ready' | 'running' | 'paused' | 'completed';
@@ -21,6 +24,12 @@ export default function App() {
 
   const [sessionStatus, setSessionStatus] =
     useState<SessionStatus>('ready');
+
+  const [sessions, setSessions] = useState<StudySession[]>([]);
+
+  useEffect(() => {
+    getSessions().then(setSessions);
+  }, []);
 
   function startScheduledSession(plan: TimerPlan) {
     // Return to an existing active session without restarting.
@@ -44,6 +53,22 @@ export default function App() {
     setActiveScreen('timer');
   }
 
+  const recordSession = useCallback(async (
+    type: 'study' | 'break',
+    durationSeconds: number
+  ) => {
+    console.log('Recording session:', type, durationSeconds);
+    const session: StudySession = {
+      id: `${Date.now()}-${Math.random()}`,
+      type,
+      durationMinutes: durationSeconds / 60,
+     completedAt: new Date().toISOString(),
+    };
+
+    setSessions(previous => [...previous, session]);
+    await saveSession(session);
+  }, []);
+
   return (
     <View style={styles.container}>
 
@@ -59,6 +84,7 @@ export default function App() {
           sessionStatus={sessionStatus}
           onStatusChange={setSessionStatus}
           onExitSchedule={exitScheduledSession}
+          onSessionComplete={recordSession}
         />
       </View>
 
@@ -76,14 +102,15 @@ export default function App() {
         />
       </View>
 
-      {/* Analytics placeholder */}
-      {activeScreen === 'analytics' && (
-        <View style={styles.screen}>
-          <Text style={styles.placeholder}>
-            Analytics coming soon!
-          </Text>
-        </View>
-      )}
+      {/* Analytics page */}
+      <View
+        style={[
+          styles.screen,
+          activeScreen !== 'analytics' && styles.hidden,
+        ]}
+      >
+        <AnalyticsScreen sessions={sessions}  />
+      </View>
 
       {/* Existing navigation bar */}
       <BottomNavigation
