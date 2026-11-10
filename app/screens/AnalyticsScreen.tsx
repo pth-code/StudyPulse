@@ -1,4 +1,5 @@
 import React from 'react';
+import type { StudySession } from '../types/analytics';
 import {
   View,
   Text,
@@ -6,7 +7,51 @@ import {
   ScrollView,
 } from 'react-native';
 
-export default function AnalyticsScreen() {
+type Props = {
+  sessions: StudySession[];
+};
+
+export default function AnalyticsScreen({ sessions }: Props) {
+  const studySessions = sessions.filter(
+    session => session.type === 'study'
+  );
+
+  const breakSessions = sessions.filter(
+    session => session.type === 'break'
+  );
+
+  const totalStudyMinutes = studySessions.reduce(
+    (total, session) => total + session.durationMinutes,
+    0
+  );
+
+  const totalBreaks = breakSessions.length;
+
+  const completedSessions = studySessions.length;
+
+  // Calculate consecutive study days
+  const studyDays = new Set(
+    studySessions.map(session =>
+      new Date(session.completedAt).toLocaleDateString()
+    )
+  );
+
+  let streak = 0;
+  const today = new Date();
+
+  for (let i = 0; i < 366; i++) {
+    const date = new Date(today);
+    date.setDate(today.getDate() - i);
+
+    if (studyDays.has(date.toLocaleDateString())) {
+      streak++;
+    } else if (i === 0) {
+      continue;
+    } else {
+      break;
+    }
+  }
+  
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>Study Analytics</Text>
@@ -15,22 +60,30 @@ export default function AnalyticsScreen() {
       </Text>
       <View style={styles.statsGrid}>
         <View style={styles.statCard}>
-            <Text style={styles.statValue}>12.5h</Text>
+            <Text style={styles.statValue}>
+              {Math.round(totalStudyMinutes)} min
+            </Text>
             <Text style={styles.statLabel}>Study Time</Text>
         </View>
 
         <View style={styles.statCard}>
-            <Text style={styles.statValue}>24</Text>
+            <Text style={styles.statValue}>
+              {completedSessions}
+            </Text>
             <Text style={styles.statLabel}>Sessions Completed</Text>
         </View>
 
         <View style={styles.statCard}>
-            <Text style={styles.statValue}>8</Text>
+            <Text style={styles.statValue}>
+              {totalBreaks}
+            </Text>
             <Text style={styles.statLabel}>Breaks Taken</Text>
         </View>
 
         <View style={styles.statCard}>
-            <Text style={styles.statValue}>5 days</Text>
+            <Text style={styles.statValue}>
+              {streak} days
+            </Text>
             <Text style={styles.statLabel}>Study Streak</Text>
         </View>
      </View>
