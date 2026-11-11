@@ -187,17 +187,22 @@ export default function TimerScreen({
       return;
     }
 
-    // Original manual timer behavior.
-    deadline.current = null;
-    setIsRunning(false);
 
-    if (mode === 'study') {
-      setMode('break');
-      setSecondsLeft(breakMinutes * 60);
-    } else {
-      setMode('study');
-      setSecondsLeft(studyMinutes * 60);
-    }
+  // Automatically transition between study and break.
+  const nextMode =
+    mode === 'study' ? 'break' : 'study';
+
+  const nextDuration =
+    nextMode === 'study'
+      ? studyMinutes * 60
+      : breakMinutes * 60;
+
+  setMode(nextMode);
+  setSecondsLeft(nextDuration);
+
+  // Automatically start the next countdown.
+  deadline.current =
+    Date.now() + nextDuration * 1000;
   }, [
     secondsLeft,
     isRunning,
