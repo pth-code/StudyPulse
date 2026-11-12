@@ -648,7 +648,7 @@ export default function TimerScreen({
       )}
 
       <Text style={styles.note}>
-        PALLAVI ZITA SANJANA SAANVI
+        Developed by the StudyPulse Team
       </Text>
     </ScrollView>
   );
