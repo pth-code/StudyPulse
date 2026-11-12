@@ -1,5 +1,6 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { Feather } from '@expo/vector-icons';
 
 import {
   View,
@@ -70,6 +71,42 @@ function formatClock(totalMinutes: number): string {
   );
 }
 
+// Convert a saved 24-hour time into a 12-hour time for the form.
+function get12HourTime(time24: string): {
+  time: string;
+  period: 'AM' | 'PM';
+} {
+  const [hours, minutes] = time24.split(':').map(Number);
+
+  const period = hours >= 12 ? 'PM' : 'AM';
+  const hours12 = hours % 12 || 12;
+
+  return {
+    time: `${hours12}:${String(minutes).padStart(2, '0')}`,
+    period,
+  };
+}
+
+// Convert the form's time and AM/PM into 24-hour format.
+function get24HourTime(
+  time: string,
+  period: 'AM' | 'PM'
+): string | null {
+  const match = time.trim().match(/^(1[0-2]|0?[1-9]):([0-5]\d)$/);
+
+  if (!match) return null;
+
+  let hours = Number(match[1]);
+
+  if (period === 'PM' && hours !== 12) {
+    hours += 12;
+  } else if (period === 'AM' && hours === 12) {
+    hours = 0;
+  }
+
+  return `${String(hours).padStart(2, '0')}:${match[2]}`;
+}
+
 export default function ScheduleScreen({
   onStartSession,
   activePlanId,
@@ -101,7 +138,8 @@ export default function ScheduleScreen({
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [startTime, setStartTime] = useState('09:00');
+  const [startTime, setStartTime] = useState('9:00');
+  const [startPeriod, setStartPeriod] = useState<'AM' | 'PM'>('AM');
   const [duration, setDuration] = useState('60');
   const [error, setError] = useState('');
 
@@ -223,7 +261,12 @@ export default function ScheduleScreen({
     setEditingId(activity?.id ?? null);
     setTitle(activity?.title ?? '');
     setDescription(activity?.description ?? '');
-    setStartTime(activity?.startTime ?? '09:00');
+    const savedTime = get12HourTime(
+      activity?.startTime ?? '09:00'
+    );
+
+    setStartTime(savedTime.time);
+    setStartPeriod(savedTime.period);
 
     setDuration(
       String(
@@ -240,20 +283,21 @@ export default function ScheduleScreen({
   // Save a new or edited activity.
   function saveActivity() {
     const minutes = Number(duration);
+    const startTime24 = get24HourTime(startTime, startPeriod);  
 
     if (
       !title.trim() ||
-      !/^([01]\d|2[0-3]):[0-5]\d$/.test(startTime) ||
+      !startTime24 ||
       !Number.isInteger(minutes) ||
       minutes <= 0
     ) {
       setError(
-        'Enter a title, valid HH:MM time, and duration.'
+        'Enter a title, valid time (e.g. 2:30), and duration.'
       );
       return;
     }
 
-    const start = timeToMinutes(startTime);
+    const start = timeToMinutes(startTime24);
     const end = start + minutes;
 
     if (end > 1440) {
@@ -301,7 +345,7 @@ export default function ScheduleScreen({
       type,
       title: title.trim(),
       description: description.trim(),
-      startTime,
+      startTime: startTime24,
       duration: minutes,
     };
 
@@ -494,12 +538,16 @@ export default function ScheduleScreen({
 
             <View style={styles.sessionContent}>
 
-              <Text style={styles.sessionTitle}>
-                {activity.type === 'study'
-                  ? '📚 '
-                  : '☕ '}
-                {activity.title}
-              </Text>
+              <View style={styles.sessionTitleRow}>
+                <Feather
+                  name={activity.type === 'study' ? 'book-open' : 'coffee'}
+                  size={18}
+                  color="#6C63FF"
+                />
+                <Text style={styles.sessionTitle}>
+                  {activity.title}
+                </Text>
+              </View>
 
               <Text style={styles.detail}>
                 {activity.duration} minutes
@@ -609,12 +657,10 @@ export default function ScheduleScreen({
                         from +
                         block.durationSeconds / 60;
 
-                      const icon =
+                      const label =
                         block.type === 'study'
-                          ? '📚'
-                          : block.type === 'auto-break'
-                            ? '💧'
-                            : '☕';
+                          ? activity.title
+                          : 'Small Break';
 
                       return (
                         <View
@@ -627,13 +673,8 @@ export default function ScheduleScreen({
                             {formatClock(to)}
                           </Text>
 
-                          <Text style={styles.previewLabel}>
-                            {icon} {block.label}
-                          </Text>
-
                           <Text style={styles.detail}>
-                            {block.durationSeconds / 60}
-                            {' minutes'}
+                            {label} · {block.durationSeconds / 60} minutes
                           </Text>
                         </View>
                       );
@@ -674,17 +715,19 @@ export default function ScheduleScreen({
               <Pressable
                 onPress={() => openForm('study')}
               >
-                <Text style={styles.option}>
-                  📚 Study Session
-                </Text>
+                <View style={styles.optionRow}>
+                  <Feather name="book-open" size={18} color="#6C63FF" />
+                  <Text style={styles.option}>Study Session</Text>
+                </View>
               </Pressable>
 
               <Pressable
                 onPress={() => openForm('break')}
               >
-                <Text style={styles.option}>
-                  ☕ Personal Break
-                </Text>
+                <View style={styles.optionRow}>
+                  <Feather name="coffee" size={18} color="#6C63FF" />
+                  <Text style={styles.option}>Personal Break</Text>
+                </View>
               </Pressable>
             </View>
           )}
@@ -726,15 +769,52 @@ export default function ScheduleScreen({
           />
 
           <Text style={styles.detail}>
-            Start time (24-hour HH:MM)
+            Start time
           </Text>
 
-          <TextInput
-            style={styles.input}
-            placeholder="14:00"
-            value={startTime}
-            onChangeText={setStartTime}
-          />
+          <View style={styles.timeInputRow}>
+            <TextInput
+              style={[styles.input, styles.timeInput]}
+              placeholder="2:30"
+              value={startTime}
+              onChangeText={setStartTime}
+              keyboardType="numbers-and-punctuation"
+            />
+
+            <Pressable
+              style={[
+                styles.periodButton,
+                startPeriod === 'AM' && styles.selectedPeriod,
+              ]}
+              onPress={() => setStartPeriod('AM')}
+            >
+            <Text
+              style={[
+                styles.periodText,
+                startPeriod === 'AM' && styles.selectedPeriodText,
+              ]}
+            >
+              AM
+            </Text>
+          </Pressable>
+
+          <Pressable
+            style={[
+              styles.periodButton,
+              startPeriod === 'PM' && styles.selectedPeriod,
+            ]}
+            onPress={() => setStartPeriod('PM')}
+          >
+            <Text
+              style={[
+                styles.periodText,
+                startPeriod === 'PM' && styles.selectedPeriodText,
+              ]}
+            >
+              PM
+            </Text>
+          </Pressable>
+        </View>
 
           <Text style={styles.detail}>
             Duration (minutes)
@@ -940,4 +1020,55 @@ const styles = StyleSheet.create({
     color: '#45418E',
     fontWeight: '600',
   },
+
+  sessionTitleRow: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 8,
+},
+
+optionRow: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 10,
+},
+
+previewLabelRow: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 8,
+},
+
+timeInputRow: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  gap: 8,
+},
+
+timeInput: {
+  flex: 1,
+},
+
+periodButton: {
+  paddingVertical: 12,
+  paddingHorizontal: 16,
+  borderWidth: 1,
+  borderColor: '#ccc',
+  borderRadius: 9,
+  backgroundColor: '#fff',
+},
+
+selectedPeriod: {
+  backgroundColor: '#6C63FF',
+  borderColor: '#6C63FF',
+},
+
+periodText: {
+  color: '#45418E',
+  fontWeight: '600',
+},
+
+selectedPeriodText: {
+  color: '#fff',
+},
 });
