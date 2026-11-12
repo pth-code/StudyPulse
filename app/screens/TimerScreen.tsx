@@ -1,5 +1,9 @@
-
-import React, { useEffect, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 
 import {
   View,
@@ -15,12 +19,16 @@ import {
   connectWebBluetooth,
   sendWebCommand,
   disconnectWebBluetooth,
+  isWebBluetoothConnected,
 } from '../services/webBluetooth';
 
 type Mode = 'study' | 'break';
 
 type SessionStatus =
   'ready' | 'running' | 'paused' | 'completed';
+
+type Reminder =
+  'BREAK_START' | 'BREAK_END' | 'SESSION_DONE';
 
 type Props = {
   activePlan: TimerPlan | null;
@@ -41,34 +49,53 @@ export default function TimerScreen({
   onSessionComplete,
 }: Props) {
 
-  // Manual timer settings.
-  const [studyMinutes, setStudyMinutes] = useState(25);
-  const [breakMinutes, setBreakMinutes] = useState(5);
-  const [mode, setMode] = useState<Mode>('study');
+  // Manual timer settings
+  const [studyMinutes, setStudyMinutes] =
+    useState(25);
 
-  // Timer state.
-  const [secondsLeft, setSecondsLeft] = useState(25 * 60);
-  const [isRunning, setIsRunning] = useState(false);
+  const [breakMinutes, setBreakMinutes] =
+    useState(5);
 
-  // Scheduled session state.
-  const [blockIndex, setBlockIndex] = useState(0);
-  const [planFinished, setPlanFinished] = useState(false);
+  const [mode, setMode] =
+    useState<Mode>('study');
 
-  // Bluetooth state.
-  const [bluetoothStatus, setBluetoothStatus] = useState<
+  const [secondsLeft, setSecondsLeft] =
+    useState(25 * 60);
+
+  const [isRunning, setIsRunning] =
+    useState(false);
+
+  // Scheduled timer state
+  const [blockIndex, setBlockIndex] =
+    useState(0);
+
+  const [planFinished, setPlanFinished] =
+    useState(false);
+
+  // Bluetooth state
+  const [
+    bluetoothStatus,
+    setBluetoothStatus,
+  ] = useState<
     'Disconnected' | 'Connecting' | 'Connected'
   >('Disconnected');
 
-  const [bluetoothMessage, setBluetoothMessage] = useState('');
+  const [bluetoothMessage, setBluetoothMessage] =
+    useState('');
 
   const deadline = useRef<number | null>(null);
+
+  // Prevent the same block from completing twice.
+  const transitionLock = useRef(false);
 
   const currentBlock =
     activePlan?.blocks[blockIndex] ?? null;
 
-  // Load a new schedule or return to the manual timer.
+  // Load a new personalized schedule.
   useEffect(() => {
     deadline.current = null;
+    transitionLock.current = false;
+
     setIsRunning(false);
     setBlockIndex(0);
     setPlanFinished(false);
@@ -81,38 +108,83 @@ export default function TimerScreen({
       setMode('study');
       setSecondsLeft(studyMinutes * 60);
     }
+
+    // Reset only when the active plan changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activePlan]);
 
-  // Connect to the Arduino.
+  // Connect to StudyBand
   async function connectBracelet() {
     try {
       setBluetoothStatus('Connecting');
 
-      const deviceName = await connectWebBluetooth();
+      const deviceName =
+        await connectWebBluetooth();
 
       setBluetoothStatus('Connected');
-      setBluetoothMessage(`Connected to ${deviceName}!`);
-    } catch (error) {
+      setBluetoothMessage(
+        `Connected to ${deviceName}!`
+      );
+    } catch (err) {
       setBluetoothStatus('Disconnected');
 
-      if (error instanceof Error) {
-        setBluetoothMessage(error.message);
-      } else {
-        setBluetoothMessage(
-          'Failed to connect to StudyBand.'
-        );
-      }
+      setBluetoothMessage(
+        err instanceof Error
+          ? err.message
+          : 'Failed to connect to StudyBand.'
+      );
     }
   }
 
   function disconnectBracelet() {
     disconnectWebBluetooth();
+
     setBluetoothStatus('Disconnected');
-    setBluetoothMessage('Bracelet disconnected.');
+    setBluetoothMessage(
+      'Bracelet disconnected.'
+    );
   }
 
-  // Update the countdown four times per second.
-  // Update the countdown four times per second.
+  // Send the correct reminder type.
+  const sendReminder = useCallback(
+    (reminder: Reminder) => {
+      const label =
+        reminder === 'BREAK_START'
+          ? 'Break starting: double pulse'
+          : reminder === 'BREAK_END'
+            ? 'Break ending: triple pulse'
+            : 'Session complete: long pulse';
+
+      if (!isWebBluetoothConnected()) {
+        setBluetoothStatus('Disconnected');
+        setBluetoothMessage(
+          `${label}. Connect bracelet for vibration.`
+        );
+        return;
+      }
+
+      sendWebCommand(reminder)
+        .then(() => {
+          setBluetoothMessage(
+            `${label} sent!`
+          );
+        })
+        .catch(err => {
+          setBluetoothStatus('Disconnected');
+
+          setBluetoothMessage(
+            `${label} failed: ${
+              err instanceof Error
+                ? err.message
+                : 'Bluetooth error'
+            }`
+          );
+        });
+    },
+    []
+  );
+
+  // Keep countdown aligned with real time.
   useEffect(() => {
     if (!isRunning) return;
 
@@ -124,7 +196,7 @@ export default function TimerScreen({
         Math.ceil(
           (deadline.current - Date.now()) / 1000
         )
-    ) ;
+      );
 
       setSecondsLeft(remaining);
     }, 250);
@@ -132,51 +204,71 @@ export default function TimerScreen({
     return () => clearInterval(interval);
   }, [isRunning]);
 
-  // Handle timer completion.
+  // Handle every timer transition.
   useEffect(() => {
-    if (!isRunning || secondsLeft !== 0) return;
+    if (
+      !isRunning ||
+      secondsLeft !== 0 ||
+      transitionLock.current
+    ) {
+      return;
+    }
 
-    // Record the completed interval.
+    transitionLock.current = true;
+
+    // Personalized scheduled session
     if (activePlan) {
-      const completedBlock = activePlan.blocks[blockIndex];
+      const finishedBlock =
+        activePlan.blocks[blockIndex];
 
-      if (completedBlock) {
+      if (finishedBlock) {
         onSessionComplete(
-          completedBlock.type === 'study' ? 'study' : 'break',
-          completedBlock.durationSeconds
+          finishedBlock.type === 'study'
+            ? 'study'
+            : 'break',
+          finishedBlock.durationSeconds
         );
       }
-    } else {
-      onSessionComplete(
-        mode,
-        (mode === 'study' ? studyMinutes : breakMinutes) * 60
-      );
-    }
-    // Alert the bracelet at every block transition.
-    sendWebCommand('VIBRATE')
-      .then(() => {
-        setBluetoothMessage('Reminder sent!');
-      })
-      .catch(() => {
-        setBluetoothMessage(
-          'Reminder reached. Bracelet not connected.'
-        );
-      });
 
-    // Follow the generated schedule.
-    if (activePlan) {
       const nextIndex = blockIndex + 1;
-      const nextBlock = activePlan.blocks[nextIndex];
+      const nextBlock =
+        activePlan.blocks[nextIndex];
 
       if (nextBlock) {
+        const finishedWasBreak =
+          finishedBlock?.type !== 'study';
+
+        const nextIsBreak =
+          nextBlock.type !== 'study';
+
+        if (
+          nextIsBreak &&
+          !finishedWasBreak
+        ) {
+          sendReminder('BREAK_START');
+        } else if (
+          !nextIsBreak &&
+          finishedWasBreak
+        ) {
+          sendReminder('BREAK_END');
+        }
+
         // Automatically start the next block.
         setBlockIndex(nextIndex);
-        setSecondsLeft(nextBlock.durationSeconds);
+
+        setSecondsLeft(
+          nextBlock.durationSeconds
+        );
 
         deadline.current =
-          Date.now() + nextBlock.durationSeconds * 1000;
+          Date.now() +
+          nextBlock.durationSeconds * 1000;
+
+        transitionLock.current = false;
       } else {
-        // All blocks are finished.
+        // Entire scheduled session completed.
+        sendReminder('SESSION_DONE');
+
         deadline.current = null;
         setIsRunning(false);
         setPlanFinished(true);
@@ -187,17 +279,39 @@ export default function TimerScreen({
       return;
     }
 
-    // Original manual timer behavior.
-    deadline.current = null;
-    setIsRunning(false);
+    // Manual timer: record completed interval.
+    onSessionComplete(
+      mode,
+      (mode === 'study'
+        ? studyMinutes
+        : breakMinutes) * 60
+    );
 
-    if (mode === 'study') {
-      setMode('break');
-      setSecondsLeft(breakMinutes * 60);
-    } else {
-      setMode('study');
-      setSecondsLeft(studyMinutes * 60);
-    }
+    // Study -> Break or Break -> Study
+    const nextMode: Mode =
+      mode === 'study'
+        ? 'break'
+        : 'study';
+
+    sendReminder(
+      nextMode === 'break'
+        ? 'BREAK_START'
+        : 'BREAK_END'
+    );
+
+    const nextDuration =
+      (nextMode === 'study'
+        ? studyMinutes
+        : breakMinutes) * 60;
+
+    setMode(nextMode);
+    setSecondsLeft(nextDuration);
+
+    // Auto-start the next countdown.
+    deadline.current =
+      Date.now() + nextDuration * 1000;
+
+    transitionLock.current = false;
   }, [
     secondsLeft,
     isRunning,
@@ -208,19 +322,20 @@ export default function TimerScreen({
     breakMinutes,
     onStatusChange,
     onSessionComplete,
+    sendReminder,
   ]);
 
-  // Start, pause, or resume the timer.
+  // Start / Pause / Resume
   async function toggleTimer() {
     if (
       planFinished ||
-      (activePlan && (!currentBlock || secondsLeft <= 0))
+      (activePlan && !currentBlock)
     ) {
       return;
     }
 
     if (isRunning) {
-      // Pause.
+      // Pause timer
       if (deadline.current !== null) {
         setSecondsLeft(
           Math.max(
@@ -243,11 +358,15 @@ export default function TimerScreen({
         await sendWebCommand('PAUSE');
       } catch {
         setBluetoothMessage(
-          'Bracelet not connected. Timer paused anyway.'
+          'Timer paused; bracelet disconnected.'
         );
       }
     } else {
-      // Start or resume.
+      if (secondsLeft <= 0) return;
+
+      // Start or resume countdown.
+      transitionLock.current = false;
+
       deadline.current =
         Date.now() + secondsLeft * 1000;
 
@@ -261,15 +380,16 @@ export default function TimerScreen({
         await sendWebCommand('START');
       } catch {
         setBluetoothMessage(
-          'Bracelet not connected. Timer started anyway.'
+          'Timer started; bracelet disconnected.'
         );
       }
     }
   }
 
-  // Reset to the beginning of the current session.
+  // Reset timer
   async function resetTimer() {
     deadline.current = null;
+    transitionLock.current = false;
     setIsRunning(false);
 
     if (activePlan) {
@@ -293,24 +413,26 @@ export default function TimerScreen({
       await sendWebCommand('STOP');
     } catch {
       setBluetoothMessage(
-        'Timer reset. Bracelet not connected.'
+        'Timer reset; bracelet disconnected.'
       );
     }
   }
 
-  // Exit the scheduled session.
+  // Leave scheduled mode
   function exitSchedule() {
     deadline.current = null;
     setIsRunning(false);
 
-    // Don't block navigation if Bluetooth is disconnected.
     sendWebCommand('STOP').catch(() => {});
 
     onExitSchedule();
   }
 
-  // Change manual study/break durations.
-  function adjustDuration(target: Mode, change: number) {
+  // Change manual timer durations
+  function adjustDuration(
+    target: Mode,
+    change: number
+  ) {
     if (isRunning || activePlan) return;
 
     if (target === 'study') {
@@ -338,23 +460,13 @@ export default function TimerScreen({
     }
   }
 
-  function formatTime(total: number) {
-    const minutes = Math.floor(total / 60);
-    const seconds = total % 60;
-
+  function formatTime(total: number): string {
     return (
-      String(minutes).padStart(2, '0') +
+      String(Math.floor(total / 60)).padStart(2, '0') +
       ':' +
-      String(seconds).padStart(2, '0')
+      String(total % 60).padStart(2, '0')
     );
   }
-
-  // Figure out the correct button label.
-  const timerButtonLabel = isRunning
-    ? 'Pause'
-    : activePlan && sessionStatus === 'paused'
-      ? 'Resume'
-      : 'Start';
 
   const timerLabel = activePlan
     ? planFinished
@@ -363,6 +475,12 @@ export default function TimerScreen({
     : mode === 'study'
       ? 'Focus Time'
       : 'Break Time';
+
+  const timerButtonLabel = isRunning
+    ? 'Pause'
+    : sessionStatus === 'paused' && activePlan
+      ? 'Resume'
+      : 'Start';
 
   return (
     <ScrollView
@@ -377,17 +495,14 @@ export default function TimerScreen({
         Study smarter. Stay balanced.
       </Text>
 
-      {/* Current session or block name */}
       <Text style={styles.mode}>
         {timerLabel}
       </Text>
 
-      {/* Countdown */}
       <Text style={styles.timer}>
         {formatTime(secondsLeft)}
       </Text>
 
-      {/* Scheduled session progress */}
       {activePlan && (
         <Text style={styles.subtitle}>
           {planFinished
@@ -396,7 +511,6 @@ export default function TimerScreen({
         </Text>
       )}
 
-      {/* Timer controls */}
       <View style={styles.row}>
         <Pressable
           style={styles.button}
@@ -404,7 +518,9 @@ export default function TimerScreen({
           disabled={planFinished}
         >
           <Text style={styles.buttonText}>
-            {planFinished ? 'Completed ✓' : timerButtonLabel}
+            {planFinished
+              ? 'Completed ✓'
+              : timerButtonLabel}
           </Text>
         </Pressable>
 
@@ -418,7 +534,6 @@ export default function TimerScreen({
         </Pressable>
       </View>
 
-      {/* Exit scheduled mode */}
       {activePlan && (
         <Pressable
           style={styles.button}
@@ -430,7 +545,6 @@ export default function TimerScreen({
         </Pressable>
       )}
 
-      {/* Bluetooth status */}
       <Text style={styles.mode}>
         {bluetoothStatus}
       </Text>
@@ -452,7 +566,9 @@ export default function TimerScreen({
         <Pressable
           style={styles.button}
           onPress={connectBracelet}
-          disabled={bluetoothStatus === 'Connecting'}
+          disabled={
+            bluetoothStatus === 'Connecting'
+          }
         >
           <Text style={styles.buttonText}>
             {bluetoothStatus === 'Connecting'
@@ -462,7 +578,6 @@ export default function TimerScreen({
         </Pressable>
       )}
 
-      {/* Manual duration controls */}
       {!activePlan && (
         <>
           <Text style={styles.heading}>
@@ -476,7 +591,9 @@ export default function TimerScreen({
                 adjustDuration('study', -1)
               }
             >
-              <Text style={styles.buttonText}>−</Text>
+              <Text style={styles.buttonText}>
+                −
+              </Text>
             </Pressable>
 
             <Text style={styles.duration}>
@@ -489,7 +606,9 @@ export default function TimerScreen({
                 adjustDuration('study', 1)
               }
             >
-              <Text style={styles.buttonText}>+</Text>
+              <Text style={styles.buttonText}>
+                +
+              </Text>
             </Pressable>
           </View>
 
@@ -504,7 +623,9 @@ export default function TimerScreen({
                 adjustDuration('break', -1)
               }
             >
-              <Text style={styles.buttonText}>−</Text>
+              <Text style={styles.buttonText}>
+                −
+              </Text>
             </Pressable>
 
             <Text style={styles.duration}>
@@ -517,14 +638,16 @@ export default function TimerScreen({
                 adjustDuration('break', 1)
               }
             >
-              <Text style={styles.buttonText}>+</Text>
+              <Text style={styles.buttonText}>
+                +
+              </Text>
             </Pressable>
           </View>
         </>
       )}
 
       <Text style={styles.note}>
-        PALLAVI ZITA SANJANA SAANVI
+        Developed by the StudyPulse Team
       </Text>
     </ScrollView>
   );
