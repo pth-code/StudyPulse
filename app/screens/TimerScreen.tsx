@@ -264,9 +264,6 @@ useEffect(() => {
         </Pressable>
       </View>
 
-      <Text style={styles.note}>
-        PALLAVI ZITA SANJANA SAANVI
-      </Text>
     </View>
   );
 }
