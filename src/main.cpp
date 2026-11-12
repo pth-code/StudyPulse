@@ -15,35 +15,134 @@
 // Controls the S8050 transistor
 const int MOTOR_PIN = 5;
 
-// Vibrate for 400 milliseconds
-const unsigned long VIBRATION_DURATION = 400;
+// Reminder types
+enum Reminder : int {
+  NONE = 0,
+  BREAK_START = 1,
+  BREAK_END = 2,
+  SESSION_DONE = 3,
+  GENERIC = 4
+};
 
-std::atomic<bool> vibrationRequested(false);
+std::atomic<int> pendingReminder(NONE);
 
-bool motorOn = false;
-unsigned long motorStartTime = 0;
+// Durations alternate between ON and OFF.
+// All values are in milliseconds.
 
-// Handle commands received from StudyPulse
-class CommandCallbacks : public NimBLECharacteristicCallbacks {
+// Break starts: two medium pulses
+const uint16_t breakStartPattern[] = {
+  250, 170, 250
+};
+
+// Break ends: three short pulses
+const uint16_t breakEndPattern[] = {
+  140, 140, 140, 140, 140
+};
+
+// Scheduled session completes: one long pulse
+const uint16_t donePattern[] = {
+  650
+};
+
+// Compatibility with old VIBRATE command
+const uint16_t genericPattern[] = {
+  400
+};
+
+const uint16_t* currentPattern = nullptr;
+size_t currentLength = 0;
+size_t segment = 0;
+
+unsigned long segmentStarted = 0;
+bool patternPlaying = false;
+
+// Begin the selected vibration pattern.
+void beginPattern(int reminder) {
+  switch (reminder) {
+    case BREAK_START:
+      currentPattern = breakStartPattern;
+      currentLength =
+        sizeof(breakStartPattern) /
+        sizeof(breakStartPattern[0]);
+
+      Serial.println(
+        "BREAK_START: double vibration"
+      );
+      break;
+
+    case BREAK_END:
+      currentPattern = breakEndPattern;
+      currentLength =
+        sizeof(breakEndPattern) /
+        sizeof(breakEndPattern[0]);
+
+      Serial.println(
+        "BREAK_END: triple vibration"
+      );
+      break;
+
+    case SESSION_DONE:
+      currentPattern = donePattern;
+      currentLength =
+        sizeof(donePattern) /
+        sizeof(donePattern[0]);
+
+      Serial.println(
+        "SESSION_DONE: long vibration"
+      );
+      break;
+
+    default:
+      currentPattern = genericPattern;
+      currentLength =
+        sizeof(genericPattern) /
+        sizeof(genericPattern[0]);
+
+      Serial.println(
+        "VIBRATE: single vibration"
+      );
+      break;
+  }
+
+  segment = 0;
+  segmentStarted = millis();
+  patternPlaying = true;
+
+  digitalWrite(MOTOR_PIN, HIGH);
+}
+
+// Handle Bluetooth commands.
+class CommandCallbacks
+  : public NimBLECharacteristicCallbacks {
+
   void onWrite(
     NimBLECharacteristic* characteristic,
     NimBLEConnInfo& connInfo
   ) override {
 
-    std::string command = characteristic->getValue();
+    const std::string command =
+      characteristic->getValue();
 
-    if (command == "VIBRATE") {
-      vibrationRequested.store(true);
-      Serial.println("VIBRATE command received!");
+    if (command == "BREAK_START") {
+      pendingReminder.store(BREAK_START);
+    }
+    else if (command == "BREAK_END") {
+      pendingReminder.store(BREAK_END);
+    }
+    else if (command == "SESSION_DONE") {
+      pendingReminder.store(SESSION_DONE);
+    }
+    else if (command == "VIBRATE") {
+      pendingReminder.store(GENERIC);
     }
     else if (command == "START") {
-      Serial.println("Study session started!");
+      Serial.println("Study session started");
     }
     else if (command == "PAUSE") {
-      Serial.println("Study session paused.");
+      Serial.println("Study session paused");
     }
     else if (command == "STOP") {
-      Serial.println("Study session stopped.");
+      Serial.println("Timer stopped");
     }
     else {
       Serial.print("Unknown command: ");
@@ -53,16 +152,14 @@ class CommandCallbacks : public NimBLECharacteristicCallbacks {
 };
 
 void setup() {
-  // Keep motor OFF when booting
+  // Motor off initially
   pinMode(MOTOR_PIN, OUTPUT);
   digitalWrite(MOTOR_PIN, LOW);
 
   Serial.begin(115200);
-  delay(1000);
+  delay(500);
 
-  Serial.println("Starting StudyPulse XIAO ESP32C3");
-
-  // Start Bluetooth
+  // Initialize Bluetooth
   NimBLEDevice::init("StudyBand");
 
   NimBLEServer* server =
@@ -79,7 +176,10 @@ void setup() {
     );
 
   characteristic->setValue("Ready");
-  characteristic->setCallbacks(new CommandCallbacks());
+
+  characteristic->setCallbacks(
+    new CommandCallbacks()
+  );
 
   service->start();
 
@@ -90,31 +190,41 @@ void setup() {
   advertising->addServiceUUID(SERVICE_UUID);
   advertising->start();
 
-  Serial.println("StudyBand is advertising!");
-  Serial.println("Waiting for BLE commands...");
+  Serial.println(
+    "StudyBand advertising: ready for reminders"
+  );
 }
 
 void loop() {
-  unsigned long now = millis();
+  // Check for a new Bluetooth reminder.
+  const int newReminder =
+    pendingReminder.exchange(NONE);
 
-  // Activate motor when VIBRATE is received
-  if (vibrationRequested.exchange(false)) {
-    digitalWrite(MOTOR_PIN, HIGH);
-    motorOn = true;
-    motorStartTime = now;
-
-    Serial.println("Motor ON");
+  if (newReminder != NONE) {
+    beginPattern(newReminder);
   }
 
-  // Automatically stop motor after 400 ms
+  // Run the pattern without blocking Bluetooth.
   if (
-    motorOn &&
-    now - motorStartTime >= VIBRATION_DURATION
+    patternPlaying &&
+    millis() - segmentStarted >=
+      currentPattern[segment]
   ) {
-    digitalWrite(MOTOR_PIN, LOW);
-    motorOn = false;
+    segment++;
 
-    Serial.println("Motor OFF");
+    if (segment >= currentLength) {
+      patternPlaying = false;
+      digitalWrite(MOTOR_PIN, LOW);
+
+      Serial.println("Pattern finished");
+    } else {
+      segmentStarted = millis();
+
+      digitalWrite(
+        MOTOR_PIN,
+        segment % 2 == 0 ? HIGH : LOW
+      );
+    }
   }
 
   delay(5);
