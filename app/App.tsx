@@ -1,19 +1,42 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+} from 'react';
+
+import {
+  View,
+  StyleSheet,
+  Pressable,
+  Text,
+  Platform,
+} from 'react-native';
 
 import TimerScreen from './screens/TimerScreen';
 import ScheduleScreen from './screens/ScheduleScreen';
 import AnalyticsScreen from './screens/AnalyticsScreen';
+import WelcomeGuide from './components/WelcomeGuide';
 import BottomNavigation from './components/BottomNavigation';
+
 import type { TimerPlan } from './types/schedule';
-import { getSessions, saveSession } from './services/analyticsService';
-import type { StudySession } from './types/analytics';
+
+import {
+  getSessions,
+  saveSession,
+} from './services/analyticsService';
+
+import type {
+  StudySession,
+} from './types/analytics';
 
 export type SessionStatus =
   'ready' | 'running' | 'paused' | 'completed';
 
-type Screen = 'timer' | 'schedule' | 'analytics';
+type Screen =
+  'timer' | 'schedule' | 'analytics';
+
+const GUIDE_KEY = 'studypulse-welcome-seen-v1';
 
 export default function App() {
   const [activeScreen, setActiveScreen] =
@@ -25,14 +48,60 @@ export default function App() {
   const [sessionStatus, setSessionStatus] =
     useState<SessionStatus>('ready');
 
-  const [sessions, setSessions] = useState<StudySession[]>([]);
+  const [sessions, setSessions] =
+    useState<StudySession[]>([]);
 
+  const [showGuide, setShowGuide] =
+    useState(false);
+
+  // Restore analytics and show the first-time guide.
   useEffect(() => {
-    getSessions().then(setSessions);
+    getSessions()
+      .then(setSessions)
+      .catch(err =>
+        console.warn(
+          'Unable to load analytics',
+          err
+        )
+      );
+
+    if (Platform.OS === 'web') {
+      try {
+        const seen = window.localStorage.getItem(
+          GUIDE_KEY
+        );
+
+        if (seen !== 'yes') {
+          setShowGuide(true);
+        }
+      } catch {
+        setShowGuide(true);
+      }
+    } else {
+      setShowGuide(true);
+    }
   }, []);
 
-  function startScheduledSession(plan: TimerPlan) {
-    // Return to an existing active session without restarting.
+  // Close guide and remember that the user has seen it.
+  function closeGuide() {
+    setShowGuide(false);
+
+    if (Platform.OS === 'web') {
+      try {
+        window.localStorage.setItem(
+          GUIDE_KEY,
+          'yes'
+        );
+      } catch {
+        // Storage might be unavailable.
+      }
+    }
+  }
+
+  // Launch a personalized study schedule.
+  function startScheduledSession(
+    plan: TimerPlan
+  ) {
     if (
       activePlan?.id === plan.id &&
       sessionStatus !== 'completed'
@@ -41,7 +110,6 @@ export default function App() {
       return;
     }
 
-    // Load a new session.
     setActivePlan(plan);
     setSessionStatus('ready');
     setActiveScreen('timer');
@@ -53,30 +121,45 @@ export default function App() {
     setActiveScreen('timer');
   }
 
-  const recordSession = useCallback(async (
-    type: 'study' | 'break',
-    durationSeconds: number
-  ) => {
-    console.log('Recording session:', type, durationSeconds);
-    const session: StudySession = {
-      id: `${Date.now()}-${Math.random()}`,
-      type,
-      durationMinutes: durationSeconds / 60,
-     completedAt: new Date().toISOString(),
-    };
+  // Save completed study and break intervals.
+  const recordSession = useCallback(
+    async (
+      type: 'study' | 'break',
+      durationSeconds: number
+    ) => {
+      const session: StudySession = {
+        id: `${Date.now()}-${Math.random()}`,
+        type,
+        durationMinutes: durationSeconds / 60,
+        completedAt: new Date().toISOString(),
+      };
 
-    setSessions(previous => [...previous, session]);
-    await saveSession(session);
-  }, []);
+      setSessions(previous => [
+        ...previous,
+        session,
+      ]);
+
+      try {
+        await saveSession(session);
+      } catch (err) {
+        console.warn(
+          'Unable to save analytics',
+          err
+        );
+      }
+    },
+    []
+  );
 
   return (
     <View style={styles.container}>
 
-      {/* Keep Timer mounted when switching tabs. */}
+      {/* Timer stays mounted between tab switches */}
       <View
         style={[
           styles.screen,
-          activeScreen !== 'timer' && styles.hidden,
+          activeScreen !== 'timer' &&
+            styles.hidden,
         ]}
       >
         <TimerScreen
@@ -88,11 +171,12 @@ export default function App() {
         />
       </View>
 
-      {/* Schedule page */}
+      {/* Schedule */}
       <View
         style={[
           styles.screen,
-          activeScreen !== 'schedule' && styles.hidden,
+          activeScreen !== 'schedule' &&
+            styles.hidden,
         ]}
       >
         <ScheduleScreen
@@ -102,21 +186,40 @@ export default function App() {
         />
       </View>
 
-      {/* Analytics page */}
+      {/* Analytics */}
       <View
         style={[
           styles.screen,
-          activeScreen !== 'analytics' && styles.hidden,
+          activeScreen !== 'analytics' &&
+            styles.hidden,
         ]}
       >
-        <AnalyticsScreen sessions={sessions}  />
+        <AnalyticsScreen sessions={sessions} />
       </View>
 
-      {/* Existing navigation bar */}
       <BottomNavigation
         activeScreen={activeScreen}
         onNavigate={setActiveScreen}
       />
+
+      {/* Help button */}
+      <Pressable
+        style={styles.helpButton}
+        onPress={() => setShowGuide(true)}
+        accessibilityRole="button"
+        accessibilityLabel="Help and instructions"
+      >
+        <Text style={styles.helpText}>
+          ? Help
+        </Text>
+      </Pressable>
+
+      {/* First-time instructions */}
+      <WelcomeGuide
+        visible={showGuide}
+        onClose={closeGuide}
+      />
+
     </View>
   );
 }
@@ -132,9 +235,22 @@ const styles = StyleSheet.create({
   hidden: {
     display: 'none',
   },
-  placeholder: {
-    padding: 30,
-    fontSize: 22,
-    color: '#45418E',
+  helpButton: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    backgroundColor: '#fff',
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#ccc4ee',
+    elevation: 3,
+    zIndex: 10,
+  },
+  helpText: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: '#5147A6',
   },
 });
